@@ -19,4 +19,4 @@ Class A corresponds to the specified execution of the exercise, while the other 
 
 To predict the manner in which the participants did the exercise, a model is built and described step by step. Additionally, the machine learning algorithm will be applied to the 20 test cases (results of these tests represent a second part of the project which is not included in the current report). 
 
-**The files associated with this project are in repository.**
+**Details about the model can be found at http://rpubs.com/lilianabraescu/462292. The files associated with this project are in repository.**
