@@ -1,0 +1,200 @@
+---
+title: "Wearable Computing: Self-tracking and quality of the movement activities"
+author: "Liliana Braescu"
+date: "1/28/2019"
+output:
+  html_document:
+    keep_md: yes
+  pdf_document: default
+---
+
+
+
+## Background
+
+Nowadays, it is possible to collect a large amount of data about personal activity by using devices such as *Jawbone Up*, *Nike FuelBand*, and *Fitbit*. These type of devices are part of the quantified self movement, as people like to quantify how much they do a particular activity (but they rarely quantify *how well they do it*).
+
+The goal of this project is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants, in order to quantify *how well participants do it*. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways (see [Refs.[1-2]](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har) for more details), i.e., 10 repetitions in five different fashions: 
+
+- *Class A* - exactly according to the specification;
+
+- *Class B* - throwing the elbows to the front;
+
+- *Class C* - lifting the dumbbell only halfway;
+
+- *Class D* - lowering the dumbbell only halfway;
+
+- *Class E* - throwing the hips to the front.
+
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. Participants were supervised by an experienced weight lifter to make sure the execution complied to the manner they were supposed to simulate. The exercises were performed by six male participants aged between 20-28 years, with little weight lifting experience. We made sure that all participants could easily simulate the mistakes in a safe and controlled manner by using a relatively light dumbbell (1.25kg).
+
+To predict the manner in which the participants did the exercise, a model is built and described step by step. Additionally, the machine learning algorithm will be applied to the 20 test cases (results of these tests represent a second part of the project which is not included in the current report). 
+
+## Getting and Cleaning Data
+
+Data are already partitioned in the training set (available [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)), and testing set (available [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)), respectively. To predict the manner in which participants did the exercise, *classe* variable from the training set is used, but any of the other variables can be considered too.
+
+To proceed forward, first the R environment is cleared and necessary libraries are loaded.
+
+```r
+rm(list=ls())
+library(randomForest); library(caret); library(rattle)
+library(parallel)
+```
+
+The training and testing sets are downloaded, and the data are read. 
+
+```r
+if(!file.exists("./WearableData")){dir.create("./WearableData")}
+
+fileUrl1 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(fileUrl1, destfile = "./WearableData/training.csv", method = "curl", mode = "wb")
+fileUrl2 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(fileUrl2, destfile = "./WearableData/testing.csv", method = "curl", mode = "wb")
+```
+
+
+```r
+training <- read.csv("./WearableData/training.csv", 
+                     header = TRUE, sep = ",", stringsAsFactors = FALSE, na.strings = c("NA", "", "#DIV/0!"))
+testing <- read.csv("./WearableData/testing.csv", 
+                    header = TRUE, sep = ",", stringsAsFactors = FALSE, na.strings = c("NA", "", "#DIV/0!"))
+dim(training); dim(testing)
+```
+
+It can be seen that training set has 19622 observations of 160 variables, while the testing set has 20 observations of  160 variables. Further, that columns containing na.strings are eliminated:
+
+```r
+training.clean <- training[, colSums(is.na(training)) == 0] 
+testing.clean <- testing[, colSums(is.na(testing)) == 0] 
+str(training.clean); str(testing.clean)
+```
+such that the number of variables was reduced to 60 which contain variable *classe*.
+
+## Partitioning Data for Cross-validation
+
+To detect relevant features to be included in the model, and to choose the model, a K-fold cross-validation is performed in the *Train the Model* section, as the cross-validation typically estimates well the expected prediction error.
+
+At this stage, training set is split into training/test sets such that 70% of the data are used to train the model.
+
+```r
+in.training <- createDataPartition(training.clean$classe, p = 0.70, list = FALSE)
+train.cross.validation <- training.clean[in.training, ]
+test.cross.validation <- training.clean[-in.training, ]
+```
+
+Note that K-fold cross-validation uses part of available data to fit the model (i.e., train.cross.validation set), and a different part (i.e., test.cross.validation set) to evaluate it (estimate performance).
+
+## Model Development
+### Train the Model
+In the following, a *5-fold cross-validation* is used along with the *Random Forest* algorithm (method = *rf*) - which is well known as producing a better performance at the expense of bias and interpretability.
+
+```r
+set.seed(33833)
+control.param <- trainControl(method = "cv", 5, allowParallel = TRUE)
+rf.model <- train(classe ~ ., data = train.cross.validation, method = "rf",
+                  trControl = control.param, ntree = 200)
+rf.model
+```
+
+```
+## Random Forest 
+## 
+## 13737 samples
+##    59 predictor
+##     5 classes: 'A', 'B', 'C', 'D', 'E' 
+## 
+## No pre-processing
+## Resampling: Cross-Validated (5 fold) 
+## Summary of sample sizes: 10990, 10989, 10990, 10990, 10989 
+## Resampling results across tuning parameters:
+## 
+##   mtry  Accuracy   Kappa    
+##    2    0.9943219  0.9928176
+##   41    0.9997816  0.9997238
+##   81    0.9996360  0.9995396
+## 
+## Accuracy was used to select the optimal model using the largest value.
+## The final value used for the model was mtry = 41.
+```
+
+### Estimate Performance: Evaluate on the Test Set
+The model is tested against the test set (i.e., test.cross.validation set) to build the confusion matrix:
+
+```r
+rf.predict <- predict(rf.model, newdata = test.cross.validation)
+test.cross.validation$classe <- factor(test.cross.validation$classe)
+confusionMatrix(rf.predict, test.cross.validation$classe)
+```
+
+```
+## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction    A    B    C    D    E
+##          A 1674    0    0    0    0
+##          B    0 1139    0    0    0
+##          C    0    0 1026    0    0
+##          D    0    0    0  964    0
+##          E    0    0    0    0 1082
+## 
+## Overall Statistics
+##                                      
+##                Accuracy : 1          
+##                  95% CI : (0.9994, 1)
+##     No Information Rate : 0.2845     
+##     P-Value [Acc > NIR] : < 2.2e-16  
+##                                      
+##                   Kappa : 1          
+##  Mcnemar's Test P-Value : NA         
+## 
+## Statistics by Class:
+## 
+##                      Class: A Class: B Class: C Class: D Class: E
+## Sensitivity            1.0000   1.0000   1.0000   1.0000   1.0000
+## Specificity            1.0000   1.0000   1.0000   1.0000   1.0000
+## Pos Pred Value         1.0000   1.0000   1.0000   1.0000   1.0000
+## Neg Pred Value         1.0000   1.0000   1.0000   1.0000   1.0000
+## Prevalence             0.2845   0.1935   0.1743   0.1638   0.1839
+## Detection Rate         0.2845   0.1935   0.1743   0.1638   0.1839
+## Detection Prevalence   0.2845   0.1935   0.1743   0.1638   0.1839
+## Balanced Accuracy      1.0000   1.0000   1.0000   1.0000   1.0000
+```
+
+## Results: Accuracy on the Trainig Set
+
+```r
+accuracy <- postResample(rf.predict, test.cross.validation$classe)
+accuracy <- accuracy[1]
+overall.ose <- 1 - as.numeric(confusionMatrix(test.cross.validation$classe, rf.predict)$overall[1])
+accuracy; overall.ose 
+```
+
+```
+## Accuracy 
+##        1
+```
+
+```
+## [1] 0
+```
+**The accuracy of the above model is 0.9998301 and the Overall Out-of-Sample error is 0.0001699235.**
+
+## Run the Model
+The above model is applied on the test set (i.e., testing.clean)
+
+```r
+results <- predict(rf.model, testing.clean[, -length(names(testing.clean))])
+results
+```
+
+```
+##  [1] A A A A A A A A A A A A A A A A A A A A
+## Levels: A B C D E
+```
+
+#### References
+[1] Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. *Qualitative Activity Recognition of Weight Lifting Exercises*. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human ’13). Stuttgart, Germany: ACM SIGCHI, 2013.
+
+[2] Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. *Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements*. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.
+
